@@ -187,6 +187,11 @@ def update_doctor_profile():
         db.session.commit()
         return jsonify({"success": True, "message": "Profile Updated"})
     return jsonify({"success": False, "message": "User not found"})
+# --- 6.1. HEALTH CHECK ENDPOINT (NEW) ---
+# This assures Render that the service is alive and listening.
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "ok", "message": "Service is healthy and ready to process requests"}), 200
 
 # --- 7. DASHBOARD STATS ---
 @app.route('/api/dashboard-stats', methods=['POST'])
