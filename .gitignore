@@ -1,0 +1,14 @@
+# 1. Secrets (NEVER upload these)
+.env
+
+# 2. Virtual Environment (These are huge and local-only)
+venv/
+env/
+.venv/
+
+# 3. Python Compiled Files (Junk)
+__pycache__/
+*.pyc
+
+# 4. System Files
+.DS_Store
