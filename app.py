@@ -35,7 +35,7 @@ try:
 except:
     client_ai = None
 
-# --- DATABASE MODELS (Kept Same) ---
+# --- DATABASE MODELS ---
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -63,12 +63,10 @@ class Appointment(db.Model):
 with app.app_context():
     db.create_all()
 
-# --- SMART TRANSLATION HELPERS ---
-
+# --- TRANSLATION HELPERS ---
 def detect_and_translate_input(text):
     try:
         lang = detect(text)
-        # If it's not English, translate it to English so we can search our DB
         if lang != 'en':
             translated_text = GoogleTranslator(source='auto', target='en').translate(text)
             return lang, translated_text
@@ -76,39 +74,11 @@ def detect_and_translate_input(text):
     except:
         return 'en', text
 
-def smart_translate_response(data, target_lang):
-    """
-    Uses OpenAI for high-quality medical translation if available.
-    Falls back to Google Translate for basic literal translation.
-    """
-    if target_lang == 'en': 
-        return data
-
-    # 1. Try OpenAI (Best Quality for Medical Context)
-    if client_ai:
-        try:
-            # We ask GPT to translate the JSON values but keep the keys/structure intact
-            prompt = f"""
-            Translate the values of this JSON object into the language code '{target_lang}'.
-            Maintain the exact JSON structure. 
-            Ensure medical terms are translated accurately and professionally (not literally).
-            
-            JSON:
-            {json.dumps(data)}
-            """
-            gpt_call = client_ai.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3
-            )
-            translated_json = json.loads(gpt_call.choices[0].message.content)
-            return translated_json
-        except Exception as e:
-            print(f"OpenAI Translation Failed: {e}")
-            # Fall through to Google Translate
-
-    # 2. Google Translate Fallback (Literal)
+def translate_response(data, target_lang):
+    if target_lang == 'en': return data
+    
     translator = GoogleTranslator(source='en', target=target_lang)
+
     def t(val):
         if isinstance(val, str) and val:
             try: return translator.translate(val)
@@ -120,10 +90,11 @@ def smart_translate_response(data, target_lang):
     try:
         translated_data = {}
         for key, value in data.items():
+            # Keep codes and IDs in English
             if key in ['codes', 'id', 'risk']: 
                 translated_data[key] = value
             elif isinstance(value, dict):
-                translated_data[key] = smart_translate_response(value, target_lang)
+                translated_data[key] = translate_response(value, target_lang)
             else:
                 translated_data[key] = t(value)
         return translated_data
@@ -131,10 +102,9 @@ def smart_translate_response(data, target_lang):
         return data
 
 def get_icd_token():
-    # (Same token logic)
-    return None 
+    return None # (Omitted for speed, using backup DB primarily)
 
-# --- STANDARD ROUTES (Login, Register, etc.) ---
+# --- STANDARD ROUTES ---
 @app.route('/health', methods=['GET'])
 def health_check(): return jsonify({"status": "ok"}), 200
 
@@ -223,78 +193,61 @@ def dashboard_stats():
         for appt in all_appts: stats["all_appointments"].append({"id": appt.id, "patient_name": appt.patientName, "doctor_name": appt.doctorName, "status": appt.status, "disease": appt.disease}); stats["patient_records"].append({"patient": appt.patientName, "doctor": appt.doctorName, "date": appt.date, "feedback": "Recorded"})
     return jsonify({"success": True, "stats": stats})
 
-# --- 8. MULTILINGUAL DISEASE SEARCH ---
+# --- 8. INTELLIGENT DISEASE SEARCH ---
 @app.route('/api/search-disease', methods=['POST'])
 def search_disease():
     raw_query = request.json.get('query', '').strip()
     
-    # 1. Detect Language & Translate to English (if needed)
+    # 1. Detect & Translate to English
     user_lang, query = detect_and_translate_input(raw_query)
     query = query.lower()
     
-    print(f"🔎 User Lang: {user_lang} | Searching for: {query}")
+    print(f"🔎 Detected: {user_lang}, Searching for: {query}")
 
-    # ROBUST ENGLISH BACKUP DB
+    # [EXPANDED BACKUP DB - Now includes Symptoms mapped to Diseases]
+    # This ensures if someone searches "Fever", they get the "Viral Fever" result.
     backup_db = {
         "asthma": { 
-            "name": "Asthma", 
-            "specialist": "Pulmonologist", 
-            "codes": {"icd11": "CA23", "namaste": "TM2-R-008"}, 
+            "name": "Asthma", "specialist": "Pulmonologist", "codes": {"icd11": "CA23", "namaste": "TM2-R-008"}, 
             "description": "A chronic condition affecting the airways in the lungs, causing wheezing and tightness.", 
-            "carePlan": { 
-                "symptoms": ["Wheezing", "Shortness of breath", "Chest tightness"], 
-                "diet": ["Ginger tea", "Warm fluids", "Avoid dairy"], 
-                "exercise": ["Walking", "Breathing exercises"], 
-                "yoga": ["Pranayama", "Sukhasana"] 
-            } 
+            "carePlan": { "symptoms": ["Wheezing", "Shortness of breath"], "diet": ["Ginger tea", "Warm fluids"], "exercise": ["Walking"], "yoga": ["Pranayama"] } 
         },
         "diabetes": { 
-            "name": "Diabetes Mellitus", 
-            "specialist": "Endocrinologist", 
-            "codes": {"icd11": "5A11", "namaste": "TM2-E-034"}, 
+            "name": "Diabetes Mellitus", "specialist": "Endocrinologist", "codes": {"icd11": "5A11", "namaste": "TM2-E-034"}, 
             "description": "A metabolic disease causing high blood sugar levels.", 
-            "carePlan": { 
-                "symptoms": ["Increased thirst", "Frequent urination", "Fatigue"], 
-                "diet": ["Leafy greens", "Bitter gourd", "Avoid sugar"], 
-                "exercise": ["Brisk walking", "Cycling"], 
-                "yoga": ["Mandukasana", "Surya Namaskar"] 
-            } 
+            "carePlan": { "symptoms": ["Increased thirst", "Frequent urination"], "diet": ["Leafy greens", "Bitter gourd"], "exercise": ["Brisk walking"], "yoga": ["Mandukasana"] } 
         },
         "migraine": { 
-            "name": "Migraine", 
-            "specialist": "Neurologist", 
-            "codes": {"icd11": "8A80", "namaste": "TM2-N-012"}, 
+            "name": "Migraine", "specialist": "Neurologist", "codes": {"icd11": "8A80", "namaste": "TM2-N-012"}, 
             "description": "Intense, debilitating headaches often with nausea.", 
-            "carePlan": { 
-                "symptoms": ["Throbbing pain", "Nausea", "Sensitivity to light"], 
-                "diet": ["Magnesium rich foods", "Hydration"], 
-                "exercise": ["Gentle stretching"], 
-                "yoga": ["Shishuasana", "Setu Bandhasana"] 
-            } 
+            "carePlan": { "symptoms": ["Throbbing pain", "Nausea"], "diet": ["Magnesium rich foods"], "exercise": ["Gentle stretching"], "yoga": ["Shishuasana"] } 
         },
-        "viral fever": { 
-            "name": "Viral Fever", 
-            "specialist": "General Physician", 
-            "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, 
+        "fever": { # Mapped "Fever" directly to Viral Fever
+            "name": "Viral Fever", "specialist": "General Physician", "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, 
             "description": "Acute viral infection characterized by high body temperature.", 
-            "carePlan": { 
-                "symptoms": ["Fever", "Chills", "Body ache"], 
-                "diet": ["Soup", "Herbal tea", "Light meals"], 
-                "exercise": ["Rest is recommended"], 
-                "yoga": ["Shavasana"] 
-            } 
+            "carePlan": { "symptoms": ["High fever", "Chills", "Body ache"], "diet": ["Soup", "Herbal tea"], "exercise": ["Rest is recommended"], "yoga": ["Shavasana"] } 
+        },
+        "viral fever": { # Duplicate for direct match
+            "name": "Viral Fever", "specialist": "General Physician", "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, 
+            "description": "Acute viral infection characterized by high body temperature.", 
+            "carePlan": { "symptoms": ["High fever", "Chills", "Body ache"], "diet": ["Soup", "Herbal tea"], "exercise": ["Rest is recommended"], "yoga": ["Shavasana"] } 
+        },
+         "headache": { # Mapped "Headache" directly to Migraine/Tension
+            "name": "Chronic Headache / Migraine", "specialist": "Neurologist", "codes": {"icd11": "8A80", "namaste": "TM2-N-012"}, 
+            "description": "Pain in the head or face that is often throbbing and constant.", 
+            "carePlan": { "symptoms": ["Head pain", "Sensitivity to light"], "diet": ["Hydration", "Fruits"], "exercise": ["Neck stretching"], "yoga": ["Balasana"] } 
         }
     }
 
     result_data = None
 
-    # 2. Find in Backup (Using English Query)
+    # 2. Find in Backup (Exact or Partial Match)
     for key in backup_db:
-        if key in query:
+        if key in query or query in key:
             result_data = backup_db[key]
             break
     
-    # 3. Fallback to OpenAI if not in backup
+    # 3. Fallback to OpenAI
     if not result_data and client_ai:
         try:
             prompt = f"Provide Ayurvedic medical summary for '{query}'. Return JSON: name, specialist, codes(icd11, namaste), description, carePlan(symptoms, diet, exercise, yoga)."
@@ -302,17 +255,15 @@ def search_disease():
             result_data = json.loads(gpt.choices[0].message.content)
         except: pass
 
-    # 4. TRANSLATE BACK (The Magic Step)
+    # 4. Translate Response Back
     if result_data:
-        # If user asked in Hindi, translate the ENGLISH result into HINDI
         if user_lang != 'en':
-            result_data = smart_translate_response(result_data, user_lang)
-        
+            result_data = translate_response(result_data, user_lang)
         return jsonify({"success": True, "data": result_data})
     
     return jsonify({"success": False, "message": "Disease not found."})
 
-# --- 9. MULTILINGUAL SYMPTOM ANALYZER ---
+# --- 9. INTELLIGENT SYMPTOM ANALYZER ---
 @app.route('/api/analyze-symptoms', methods=['POST'])
 def analyze_symptoms():
     raw_symptoms = request.json.get('symptoms', '').strip()
@@ -321,25 +272,41 @@ def analyze_symptoms():
     user_lang, symptoms = detect_and_translate_input(raw_symptoms)
     symptoms = symptoms.lower()
     
+    # Expanded Keywords for better matching
     smart_diagnosis = [
-        {"keywords": ["headache", "nausea", "light", "head"], "disease": "Migraine", "risk": "Moderate", "specialty": "Neurologist", "advice": "Rest in a dark room, hydrate."},
-        {"keywords": ["chest", "heart", "squeeze", "breath"], "disease": "Cardiac Issue", "risk": "High", "specialty": "Cardiologist", "advice": "Seek immediate medical help."},
-        {"keywords": ["fever", "chills", "hot", "temperature"], "disease": "Viral Fever", "risk": "Low", "specialty": "General Physician", "advice": "Rest, take paracetamol if needed."},
-        {"keywords": ["sugar", "thirst", "urination"], "disease": "Diabetes", "risk": "Moderate", "specialty": "Endocrinologist", "advice": "Check blood sugar levels."},
-        {"keywords": ["joint", "knee", "pain"], "disease": "Arthritis", "risk": "Moderate", "specialty": "Orthopedist", "advice": "Use hot compress."},
-        {"keywords": ["skin", "rash", "itch"], "disease": "Dermatitis", "risk": "Low", "specialty": "Dermatologist", "advice": "Apply moisturizer."}
+        {"keywords": ["migraine", "headache", "head", "throbbing"], "disease": "Migraine", "risk": "Moderate", "specialty": "Neurologist", "advice": "Rest in a dark room, hydrate."},
+        {"keywords": ["cardiac", "chest", "heart", "pain", "attack"], "disease": "Cardiac Issue", "risk": "High", "specialty": "Cardiologist", "advice": "Seek immediate medical help."},
+        {"keywords": ["viral", "fever", "chills", "hot", "temp"], "disease": "Viral Fever", "risk": "Low", "specialty": "General Physician", "advice": "Rest, take paracetamol if needed."},
+        {"keywords": ["diabetes", "sugar", "thirst", "urination"], "disease": "Diabetes", "risk": "Moderate", "specialty": "Endocrinologist", "advice": "Check blood sugar levels."},
+        {"keywords": ["arthritis", "joint", "knee", "pain", "stiff"], "disease": "Arthritis", "risk": "Moderate", "specialty": "Orthopedist", "advice": "Use hot compress."},
+        {"keywords": ["dermatitis", "skin", "rash", "itch", "red"], "disease": "Dermatitis", "risk": "Low", "specialty": "Dermatologist", "advice": "Apply moisturizer."}
     ]
 
-    match = {"disease": "General Health Query", "risk": "Unknown", "specialty": "General Physician", "advice": "Consult a doctor."}
+    match = None
+    openai_success = False
 
-    for item in smart_diagnosis:
-        if any(word in symptoms for word in item['keywords']):
-            match = item
-            break
+    # 2. Try OpenAI First (Best for complex sentences)
+    try:
+        if client_ai:
+            prompt = f"Analyze symptoms: \"{symptoms}\". Return valid JSON with: {{\"disease\": \"\", \"risk\": \"\", \"specialty\": \"\", \"advice\": \"\"}}"
+            gpt = client_ai.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt}])
+            match = json.loads(gpt.choices[0].message.content)
+            openai_success = True
+    except: pass
 
-    # 2. Translate Response Back
+    # 3. Fallback to Local Logic
+    if not openai_success:
+        for item in smart_diagnosis:
+            if any(word in symptoms for word in item['keywords']):
+                match = item
+                break
+        
+    if not match:
+        match = {"disease": "General Health Issue", "risk": "Unknown", "specialty": "General Physician", "advice": "Consult a doctor."}
+
+    # 4. Translate Response Back
     if user_lang != 'en':
-        match = smart_translate_response(match, user_lang)
+        match = translate_response(match, user_lang)
 
     return jsonify({"success": True, "data": match})
 
