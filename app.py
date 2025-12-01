@@ -222,135 +222,96 @@ def dashboard_stats():
 
     return jsonify({"success": True, "stats": stats})
 
-# --- 8. AI & DISEASE SEARCH (EXPANDED LOCAL INTELLIGENCE) ---
+# ... (Imports and DB Config remain same) ...
+
+# --- 8. AI & DISEASE SEARCH ---
 @app.route('/api/search-disease', methods=['POST'])
 def search_disease():
     query = request.json.get('query', '').lower().strip()
     
-    # --- EXPANDED BACKUP DICTIONARIES ---
-    icd_fallback_db = {
-        "asthma": {"code": "CA23", "title": "Asthma"},
-        "diabetes": {"code": "5A11", "title": "Type 2 Diabetes Mellitus"},
-        "migraine": {"code": "8A80", "title": "Migraine"},
-        "hypertension": {"code": "BA00", "title": "Essential Hypertension"},
-        "viral fever": {"code": "MG26", "title": "Viral Fever"},
-    }
-    
-    openai_fallback_db = {
+    # EXPANDED BACKUP DB (Ensures specific data)
+    backup_db = {
         "asthma": {
-            "description": "A chronic condition affecting the airways in the lungs, causing wheezing and tightness.",
-            "symptoms": ["Shortness of breath", "Chest tightness", "Wheezing"],
-            "diet": ["Warm fluids", "Ginger tea", "Avoid cold foods"],
-            "exercise": ["Breathing exercises", "Walking"],
-            "yoga": ["Pranayama", "Sukhasana"],
-            "specialist": "Pulmonologist"
+            "name": "Asthma",
+            "specialist": "Pulmonologist",
+            "codes": {"icd11": "CA23", "namaste": "TM2-R-008"},
+            "description": "Chronic inflammatory disease of the airways.",
+            "carePlan": {
+                "symptoms": ["Wheezing", "Shortness of breath", "Chest tightness"],
+                "diet": ["Ginger tea", "Garlic", "Avoid cold dairy"],
+                "exercise": ["Walking", "Swimming"],
+                "yoga": ["Pranayama", "Sukhasana"]
+            }
         },
         "diabetes": {
-            "description": "A metabolic disease causing high blood sugar levels.",
-            "symptoms": ["Increased thirst", "Frequent urination", "Fatigue"],
-            "diet": ["Leafy greens", "Whole grains", "Avoid sugary drinks"],
-            "exercise": ["Brisk walking", "Cycling", "Resistance training"],
-            "yoga": ["Mandukasana", "Ardha Matsyendrasana"],
-            "specialist": "Endocrinologist"
+            "name": "Diabetes Mellitus",
+            "specialist": "Endocrinologist",
+            "codes": {"icd11": "5A11", "namaste": "TM2-E-034"},
+            "description": "Metabolic disorder characterized by high blood sugar.",
+            "carePlan": {
+                "symptoms": ["Thirst", "Frequent urination", "Fatigue"],
+                "diet": ["Leafy greens", "Whole grains", "Bitter gourd"],
+                "exercise": ["Brisk walking", "Cycling"],
+                "yoga": ["Mandukasana", "Surya Namaskar"]
+            }
         },
         "migraine": {
-            "description": "Intense, debilitating headaches often with nausea and sensitivity to light.",
-            "symptoms": ["Severe throbbing pain", "Nausea", "Sensitivity to light"],
-            "diet": ["Magnesium rich foods", "Stay hydrated"],
-            "exercise": ["Gentle stretching", "Yoga", "Tai Chi"],
-            "yoga": ["Shishuasana", "Setu Bandhasana"],
-            "specialist": "Neurologist"
+            "name": "Migraine",
+            "specialist": "Neurologist",
+            "codes": {"icd11": "8A80", "namaste": "TM2-N-012"},
+            "description": "Recurrent throbbing headache often with nausea.",
+            "carePlan": {
+                "symptoms": ["Throbbing pain", "Nausea", "Light sensitivity"],
+                "diet": ["Magnesium rich foods", "Water"],
+                "exercise": ["Gentle stretching"],
+                "yoga": ["Shishuasana", "Setu Bandhasana"]
+            }
         },
-        "viral fever": {
-            "description": "A fever caused by a viral infection, often accompanied by body aches and fatigue.",
-            "symptoms": ["Fever", "Body aches", "Fatigue", "Sore throat"],
-            "diet": ["Fluids", "Soup", "Light, easily digestible food"],
-            "exercise": ["Rest is recommended"],
-            "yoga": ["Shavasana", "Pranayama for relaxation"],
-            "specialist": "General Physician"
+         "viral fever": {
+            "name": "Viral Fever",
+            "specialist": "General Physician",
+            "codes": {"icd11": "MG26", "namaste": "TM2-J-005"},
+            "description": "Acute viral infection characterized by high body temperature.",
+            "carePlan": {
+                "symptoms": ["Fever", "Chills", "Body ache"],
+                "diet": ["Soup", "Herbal tea", "Light meals"],
+                "exercise": ["Rest recommended"],
+                "yoga": ["Shavasana"]
+            }
         }
     }
-    # --- END EXPANDED BACKUP ---
-    
-    # Check Backup First (Fastest)
-    matched_backup = None
-    for key in openai_fallback_db:
-        if key in query:
-            matched_backup = openai_fallback_db[key]
-            break
 
-    # 1. ICD Search
-    icd_result = {"code": "N/A", "title": query.capitalize()}
-    token = get_icd_token()
-    if token:
-        try:
-            headers = { 'Authorization': f'Bearer {token}', 'Accept': 'application/json', 'API-Version': 'v2', 'Accept-Language': 'en'}
-            res = requests.get(f"https://id.who.int/icd/entity/search?q={query}", headers=headers).json()
-            if res.get('destinationEntities') and len(res['destinationEntities']) > 0:
-                best_match = res['destinationEntities'][0]
-                icd_result = { "code": best_match.get('theCode', 'No Code'), "title": best_match.get('title', query) }
-        except: pass
-    
-    if icd_result['code'] == "N/A":
-        for key in icd_fallback_db:
-            if key in query: icd_result = icd_fallback_db[key]; break
+    if query in backup_db:
+        return jsonify({"success": True, "data": backup_db[query]})
 
-    # 2. AI Care Plan
-    ai_response = matched_backup or {"description": "Consult a specialist.", "symptoms": [], "diet": [], "exercise": [], "yoga": [], "specialist": "General Physician"}
-    openai_success = False
+    # Fallback
+    return jsonify({"success": False, "message": "Disease not found in basic database."})
 
-    if not matched_backup and client_ai:
-        try:
-            prompt = f"Provide a structured Ayurvedic and medical summary for the disease: '{query}'. Return ONLY valid JSON with structure: {{\"description\": \"\", \"symptoms\": [], \"diet\": [], \"exercise\": [], \"yoga\": [], \"specialist\": \"\"}}"
-            gpt_call = client_ai.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt}])
-            ai_response = json.loads(gpt_call.choices[0].message.content)
-            openai_success = True
-        except: pass
-
-    final_data = {
-        "name": icd_result['title'],
-        "codes": {"icd11": icd_result['code'], "namaste": "TM-Code"},
-        "description": ai_response.get('description'),
-        "carePlan": ai_response,
-        "specialist": ai_response.get('specialist', 'General Physician')
-    }
-    return jsonify({"success": True, "data": final_data})
-
-# --- 9. ANALYZE SYMPTOMS (ROBUST DIAGNOSTICS) ---
+# --- 9. ANALYZE SYMPTOMS (SMART MATCHING) ---
 @app.route('/api/analyze-symptoms', methods=['POST'])
 def analyze_symptoms():
     symptoms = request.json.get('symptoms', '').lower()
     
-    # Local Diagnostic Engine (Ensures specific results without external API)
-    local_diagnosis_db = [
-        {"keywords": ["severe headache", "light", "throbbing"], "disease": "Migraine", "risk": "Moderate", "specialty": "Neurologist", "advice": "Rest in a dark room."},
-        {"keywords": ["chest pain", "squeezing", "heart"], "disease": "Cardiac Issue", "risk": "High", "specialty": "Cardiologist", "advice": "Seek immediate medical attention."},
-        {"keywords": ["high fever", "cough", "sore throat"], "disease": "Viral Infection", "risk": "Low", "specialty": "General Physician", "advice": "Rest and hydration."},
-        {"keywords": ["thirst", "frequent urination"], "disease": "Diabetes Onset", "risk": "Moderate", "specialty": "Endocrinologist", "advice": "Schedule a blood sugar test."},
-        {"keywords": ["skin", "itch", "red patches"], "disease": "Dermatitis", "risk": "Low", "specialty": "Dermatologist", "advice": "Avoid scratching."},
-        {"keywords": ["joint", "pain", "stiffness"], "disease": "Arthritis", "risk": "Moderate", "specialty": "Rheumatologist", "advice": "Apply heat and consult a specialist."}
+    # EXPANDED KEYWORD MATCHING
+    smart_diagnosis = [
+        {"keywords": ["headache", "nausea", "light", "throbbing"], "disease": "Migraine", "risk": "Moderate", "specialty": "Neurologist", "advice": "Rest in a dark room, hydrate."},
+        {"keywords": ["chest", "heart", "squeeze", "breath"], "disease": "Cardiac Issue", "risk": "High", "specialty": "Cardiologist", "advice": "Seek immediate medical help."},
+        {"keywords": ["fever", "chills", "hot", "shivering"], "disease": "Viral Fever", "risk": "Low", "specialty": "General Physician", "advice": "Rest, take paracetamol if needed, drink fluids."},
+        {"keywords": ["sugar", "thirst", "urination"], "disease": "Diabetes", "risk": "Moderate", "specialty": "Endocrinologist", "advice": "Check blood sugar levels."},
+        {"keywords": ["joint", "knee", "pain", "stiff"], "disease": "Arthritis", "risk": "Moderate", "specialty": "Orthopedist", "advice": "Use hot compress, avoid strain."},
+        {"keywords": ["skin", "rash", "itch", "red"], "disease": "Dermatitis", "risk": "Low", "specialty": "Dermatologist", "advice": "Apply moisturizer, avoid scratching."}
     ]
 
-    result = {"disease": "General Health Query", "risk": "Unknown", "specialty": "General Physician", "advice": "Please consult a doctor for a physical checkup."}
-    openai_success = False
+    match = {"disease": "General Health Issue", "risk": "Unknown", "specialty": "General Physician", "advice": "Consult a doctor for better diagnosis."}
 
-    try:
-        if client_ai:
-            prompt = f"Analyze symptoms: \"{symptoms}\". Return valid JSON with: {{\"disease\": \"\", \"risk\": \"\", \"specialty\": \"\", \"advice\": \"\"}}"
-            gpt = client_ai.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt}])
-            result = json.loads(gpt.choices[0].message.content)
-            openai_success = True
-    except Exception as e:
-         pass 
+    for item in smart_diagnosis:
+        # Check if ANY keyword is present in the user input
+        if any(word in symptoms for word in item['keywords']):
+            match = item
+            break
 
-    if not openai_success:
-        # Fallback to local dictionary
-        for condition in local_diagnosis_db:
-            if any(word in symptoms for word in condition['keywords']):
-                result = condition
-                break
-        
-    return jsonify({"success": True, "data": result})
-
+    return jsonify({"success": True, "data": match})
+    
+   
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
