@@ -64,20 +64,21 @@ class Appointment(db.Model):
 with app.app_context():
     db.create_all()
 
-# --- TRANSLATION HELPERS (FIXED LOGIC) ---
+# --- TRANSLATION HELPERS (FIXED) ---
 def detect_and_translate_input(text):
     # 1. FORCE ENGLISH for common medical terms to prevent mis-detection
-    # This prevents "Fever" from being detected as Norwegian/Catalan
     common_english_terms = [
         "fever", "viral fever", "headache", "migraine", "asthma", "diabetes", 
         "cold", "cough", "flu", "pain", "chest pain", "stomach pain", 
-        "acne", "rash", "joint pain", "arthritis", "dengue", "malaria"
+        "acne", "rash", "joint pain", "arthritis", "dengue", "malaria",
+        "typhoid", "jaundice", "infection"
     ]
     
     if text.lower().strip() in common_english_terms:
         return 'en', text
 
     try:
+        # 2. Otherwise, use AI detection
         lang = detect(text)
         if lang != 'en':
             translated_text = GoogleTranslator(source='auto', target='en').translate(text)
@@ -89,7 +90,7 @@ def detect_and_translate_input(text):
 def translate_response(data, target_lang):
     if target_lang == 'en': return data
     
-    # Use OpenAI for smarter translation if available (better for medical terms)
+    # Use OpenAI for smarter translation if available
     if client_ai:
         try:
             prompt = f"Translate the values of this JSON to language code '{target_lang}'. Keep keys exactly the same. JSON: {json.dumps(data)}"
@@ -121,7 +122,7 @@ def translate_response(data, target_lang):
         return data
 
 def get_icd_token():
-    return None # Using backup DB primarily for speed
+    return None 
 
 # --- STANDARD ROUTES ---
 @app.route('/health', methods=['GET'])
@@ -217,15 +218,15 @@ def dashboard_stats():
 def search_disease():
     raw_query = request.json.get('query', '').strip()
     
-    # 1. Detect & Translate
+    # 1. Detect & Translate to English (With Safety Override)
     user_lang, query = detect_and_translate_input(raw_query)
     query = query.lower()
     
-    # BACKUP DB
+    # [BACKUP DB]
     backup_db = {
         "asthma": { "name": "Asthma", "specialist": "Pulmonologist", "codes": {"icd11": "CA23", "namaste": "TM2-R-008"}, "description": "A chronic condition affecting the airways in the lungs, causing wheezing and tightness.", "carePlan": { "symptoms": ["Wheezing", "Shortness of breath"], "diet": ["Ginger tea", "Warm fluids"], "exercise": ["Walking"], "yoga": ["Pranayama"] } },
         "diabetes": { "name": "Diabetes Mellitus", "specialist": "Endocrinologist", "codes": {"icd11": "5A11", "namaste": "TM2-E-034"}, "description": "A metabolic disease causing high blood sugar levels.", "carePlan": { "symptoms": ["Increased thirst", "Frequent urination"], "diet": ["Leafy greens", "Bitter gourd"], "exercise": ["Brisk walking"], "yoga": ["Mandukasana"] } },
-        "migraine": { "name": "Migraine", "specialist": "Neurologist", "codes": {"icd11": "8A80", "namaste": "TM2-N-012"}, "description": "Intense, debilitating headaches often with nausea.", "carePlan": { "symptoms": ["Throbbing pain", "Nausea"], "diet": ["Magnesium rich foods", "Hydration"], "exercise": ["Gentle stretching"], "yoga": ["Shishuasana"] } },
+        "migraine": { "name": "Migraine", "specialist": "Neurologist", "codes": {"icd11": "8A80", "namaste": "TM2-N-012"}, "description": "Intense, debilitating headaches often with nausea.", "carePlan": { "symptoms": ["Throbbing pain", "Nausea"], "diet": ["Magnesium rich foods"], "exercise": ["Gentle stretching"], "yoga": ["Shishuasana"] } },
         "viral fever": { "name": "Viral Fever", "specialist": "General Physician", "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, "description": "Acute viral infection characterized by high body temperature and fatigue.", "carePlan": { "symptoms": ["High fever", "Chills", "Body ache"], "diet": ["Soup", "Herbal tea", "Light meals"], "exercise": ["Rest is recommended"], "yoga": ["Shavasana"] } },
         "fever": { "name": "Viral Fever", "specialist": "General Physician", "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, "description": "Acute viral infection characterized by high body temperature and fatigue.", "carePlan": { "symptoms": ["High fever", "Chills", "Body ache"], "diet": ["Soup", "Herbal tea", "Light meals"], "exercise": ["Rest is recommended"], "yoga": ["Shavasana"] } }
     }
@@ -261,14 +262,13 @@ def analyze_symptoms():
     user_lang, symptoms = detect_and_translate_input(raw_symptoms)
     symptoms = symptoms.lower()
     
-    # Local Diagnostic Engine
     local_diagnosis_db = [
-        {"keywords": ["headache", "head", "throbbing", "migraine"], "disease": "Migraine", "risk": "Moderate", "specialty": "Neurologist", "advice": "Rest in a dark room, stay hydrated."},
-        {"keywords": ["chest", "heart", "pain", "squeeze"], "disease": "Potential Cardiac Issue", "risk": "High", "specialty": "Cardiologist", "advice": "Seek immediate medical attention."},
-        {"keywords": ["fever", "hot", "temp", "chills", "viral"], "disease": "Viral Fever", "risk": "Low", "specialty": "General Physician", "advice": "Rest, drink plenty of fluids, take paracetamol if needed."},
-        {"keywords": ["sugar", "thirst", "urination"], "disease": "Diabetes", "risk": "Moderate", "specialty": "Endocrinologist", "advice": "Check blood sugar levels immediately."},
-        {"keywords": ["joint", "knee", "pain"], "disease": "Arthritis", "risk": "Moderate", "specialty": "Orthopedist", "advice": "Apply heat/cold packs, consult specialist."},
-        {"keywords": ["skin", "rash", "itch"], "disease": "Dermatitis", "risk": "Low", "specialty": "Dermatologist", "advice": "Apply moisturizer, avoid scratching."}
+        {"keywords": ["headache", "head", "throbbing"], "disease": "Migraine", "risk": "Moderate", "specialty": "Neurologist", "advice": "Rest in a dark room."},
+        {"keywords": ["chest", "heart", "pain"], "disease": "Cardiac Issue", "risk": "High", "specialty": "Cardiologist", "advice": "Seek help."},
+        {"keywords": ["fever", "hot", "temp", "cold"], "disease": "Viral Fever", "risk": "Low", "specialty": "General Physician", "advice": "Rest."},
+        {"keywords": ["sugar", "thirst"], "disease": "Diabetes", "risk": "Moderate", "specialty": "Endocrinologist", "advice": "Check sugar."},
+        {"keywords": ["joint", "knee", "pain"], "disease": "Arthritis", "risk": "Moderate", "specialty": "Orthopedist", "advice": "Use hot compress."},
+        {"keywords": ["skin", "rash", "itch"], "disease": "Dermatitis", "risk": "Low", "specialty": "Dermatologist", "advice": "Apply moisturizer."}
     ]
 
     match = None
@@ -288,7 +288,7 @@ def analyze_symptoms():
         except: pass
 
     if not match:
-        match = {"disease": "General Health Query", "risk": "Unknown", "specialty": "General Physician", "advice": "Please consult a doctor."}
+        match = {"disease": "General Health Query", "risk": "Unknown", "specialty": "General Physician", "advice": "Consult a doctor."}
     
     # 3. Translate Back
     if user_lang != 'en':
