@@ -1,3 +1,4 @@
+# backend/app.py
 print("--- 1. STARTING PYTHON SERVER ---")
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -228,9 +229,11 @@ def search_disease():
     
     # --- EXPANDED BACKUP DICTIONARIES ---
     icd_fallback_db = {
-        "asthma": {"code": "CA23", "title": "Asthma"}, "bronchial asthma": {"code": "CA23", "title": "Bronchial Asthma"},
-        "diabetes": {"code": "5A11", "title": "Type 2 Diabetes Mellitus"}, "sugar": {"code": "5A11", "title": "Type 2 Diabetes Mellitus"},
-        "migraine": {"code": "8A80", "title": "Migraine"}, "hypertension": {"code": "BA00", "title": "Essential Hypertension"}, 
+        "asthma": {"code": "CA23", "title": "Asthma"},
+        "diabetes": {"code": "5A11", "title": "Type 2 Diabetes Mellitus"},
+        "migraine": {"code": "8A80", "title": "Migraine"},
+        "hypertension": {"code": "BA00", "title": "Essential Hypertension"},
+        "viral fever": {"code": "MG26", "title": "Viral Fever"},
     }
     
     openai_fallback_db = {
@@ -239,21 +242,32 @@ def search_disease():
             "symptoms": ["Shortness of breath", "Chest tightness", "Wheezing"],
             "diet": ["Warm fluids", "Ginger tea", "Avoid cold foods"],
             "exercise": ["Breathing exercises", "Walking"],
-            "yoga": ["Pranayama", "Sukhasana"]
+            "yoga": ["Pranayama", "Sukhasana"],
+            "specialist": "Pulmonologist"
         },
         "diabetes": {
             "description": "A metabolic disease causing high blood sugar levels.",
             "symptoms": ["Increased thirst", "Frequent urination", "Fatigue"],
             "diet": ["Leafy greens", "Whole grains", "Avoid sugary drinks"],
             "exercise": ["Brisk walking", "Cycling", "Resistance training"],
-            "yoga": ["Mandukasana", "Ardha Matsyendrasana"]
+            "yoga": ["Mandukasana", "Ardha Matsyendrasana"],
+            "specialist": "Endocrinologist"
         },
         "migraine": {
             "description": "Intense, debilitating headaches often with nausea and sensitivity to light.",
             "symptoms": ["Severe throbbing pain", "Nausea", "Sensitivity to light"],
             "diet": ["Magnesium rich foods", "Stay hydrated"],
             "exercise": ["Gentle stretching", "Yoga", "Tai Chi"],
-            "yoga": ["Shishuasana", "Setu Bandhasana"]
+            "yoga": ["Shishuasana", "Setu Bandhasana"],
+            "specialist": "Neurologist"
+        },
+        "viral fever": {
+            "description": "A fever caused by a viral infection, often accompanied by body aches and fatigue.",
+            "symptoms": ["Fever", "Body aches", "Fatigue", "Sore throat"],
+            "diet": ["Fluids", "Soup", "Light, easily digestible food"],
+            "exercise": ["Rest is recommended"],
+            "yoga": ["Shavasana", "Pranayama for relaxation"],
+            "specialist": "General Physician"
         }
     }
     # --- END EXPANDED BACKUP ---
@@ -265,32 +279,40 @@ def search_disease():
             matched_backup = openai_fallback_db[key]
             break
 
-    # If no exact match, proceed to API/Generic Logic
-    
     # 1. ICD Search
     icd_result = {"code": "N/A", "title": query.capitalize()}
     token = get_icd_token()
-    # (API call logic omitted for brevity, fallback ensures results)
+    if token:
+        try:
+            headers = { 'Authorization': f'Bearer {token}', 'Accept': 'application/json', 'API-Version': 'v2', 'Accept-Language': 'en'}
+            res = requests.get(f"https://id.who.int/icd/entity/search?q={query}", headers=headers).json()
+            if res.get('destinationEntities') and len(res['destinationEntities']) > 0:
+                best_match = res['destinationEntities'][0]
+                icd_result = { "code": best_match.get('theCode', 'No Code'), "title": best_match.get('title', query) }
+        except: pass
+    
     if icd_result['code'] == "N/A":
         for key in icd_fallback_db:
             if key in query: icd_result = icd_fallback_db[key]; break
 
-    # 2. AI Care Plan (If backup was found, use it; otherwise proceed to API or default)
-    ai_response = matched_backup or {"description": "Consult a specialist.", "symptoms": [], "diet": [], "exercise": [], "yoga": []}
-    
-    # Attempt OpenAI if no local match was found
+    # 2. AI Care Plan
+    ai_response = matched_backup or {"description": "Consult a specialist.", "symptoms": [], "diet": [], "exercise": [], "yoga": [], "specialist": "General Physician"}
+    openai_success = False
+
     if not matched_backup and client_ai:
         try:
-            prompt = f"Provide a structured Ayurvedic and medical summary for the disease: '{query}'. Return ONLY valid JSON with structure: {{\"description\": \"\", \"symptoms\": [], \"diet\": [], \"exercise\": [], \"yoga\": []}}"
+            prompt = f"Provide a structured Ayurvedic and medical summary for the disease: '{query}'. Return ONLY valid JSON with structure: {{\"description\": \"\", \"symptoms\": [], \"diet\": [], \"exercise\": [], \"yoga\": [], \"specialist\": \"\"}}"
             gpt_call = client_ai.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt}])
             ai_response = json.loads(gpt_call.choices[0].message.content)
+            openai_success = True
         except: pass
 
     final_data = {
         "name": icd_result['title'],
         "codes": {"icd11": icd_result['code'], "namaste": "TM-Code"},
         "description": ai_response.get('description'),
-        "carePlan": ai_response
+        "carePlan": ai_response,
+        "specialist": ai_response.get('specialist', 'General Physician')
     }
     return jsonify({"success": True, "data": final_data})
 
@@ -305,21 +327,21 @@ def analyze_symptoms():
         {"keywords": ["chest pain", "squeezing", "heart"], "disease": "Cardiac Issue", "risk": "High", "specialty": "Cardiologist", "advice": "Seek immediate medical attention."},
         {"keywords": ["high fever", "cough", "sore throat"], "disease": "Viral Infection", "risk": "Low", "specialty": "General Physician", "advice": "Rest and hydration."},
         {"keywords": ["thirst", "frequent urination"], "disease": "Diabetes Onset", "risk": "Moderate", "specialty": "Endocrinologist", "advice": "Schedule a blood sugar test."},
-        {"keywords": ["skin", "itch", "red patches"], "disease": "Dermatitis", "risk": "Low", "specialty": "Dermatologist", "advice": "Avoid scratching."}
+        {"keywords": ["skin", "itch", "red patches"], "disease": "Dermatitis", "risk": "Low", "specialty": "Dermatologist", "advice": "Avoid scratching."},
+        {"keywords": ["joint", "pain", "stiffness"], "disease": "Arthritis", "risk": "Moderate", "specialty": "Rheumatologist", "advice": "Apply heat and consult a specialist."}
     ]
 
     result = {"disease": "General Health Query", "risk": "Unknown", "specialty": "General Physician", "advice": "Please consult a doctor for a physical checkup."}
-    openai_success = False # Required to prevent crash if 'try' fails
+    openai_success = False
 
     try:
-        # Attempt OpenAI if key is set
         if client_ai:
             prompt = f"Analyze symptoms: \"{symptoms}\". Return valid JSON with: {{\"disease\": \"\", \"risk\": \"\", \"specialty\": \"\", \"advice\": \"\"}}"
             gpt = client_ai.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt}])
             result = json.loads(gpt.choices[0].message.content)
             openai_success = True
     except Exception as e:
-         pass # Fail silently to backup
+         pass 
 
     if not openai_success:
         # Fallback to local dictionary
