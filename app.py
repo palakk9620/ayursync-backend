@@ -14,15 +14,13 @@ from dotenv import load_dotenv
 from deep_translator import GoogleTranslator
 from langdetect import detect, DetectorFactory
 
-# Ensure consistent language detection
 DetectorFactory.seed = 0
-
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# Database Config
+# DB Config
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
@@ -37,7 +35,7 @@ try:
 except:
     client_ai = None
 
-# --- DATABASE MODELS ---
+# --- DATABASE MODELS (Kept Same) ---
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -65,91 +63,109 @@ class Appointment(db.Model):
 with app.app_context():
     db.create_all()
 
-# --- TRANSLATION HELPERS ---
+# --- SMART TRANSLATION HELPERS ---
+
 def detect_and_translate_input(text):
     try:
         lang = detect(text)
+        # If it's not English, translate it to English so we can search our DB
         if lang != 'en':
-            # Translate input TO English for processing
             translated_text = GoogleTranslator(source='auto', target='en').translate(text)
             return lang, translated_text
         return 'en', text
     except:
         return 'en', text
 
-def translate_response(data, target_lang):
+def smart_translate_response(data, target_lang):
     """
-    Translates the output JSON back to the user's language.
-    Ensures semantic translation for descriptions and lists.
+    Uses OpenAI for high-quality medical translation if available.
+    Falls back to Google Translate for basic literal translation.
     """
-    if target_lang == 'en': return data
-    
-    translator = GoogleTranslator(source='en', target=target_lang)
+    if target_lang == 'en': 
+        return data
 
+    # 1. Try OpenAI (Best Quality for Medical Context)
+    if client_ai:
+        try:
+            # We ask GPT to translate the JSON values but keep the keys/structure intact
+            prompt = f"""
+            Translate the values of this JSON object into the language code '{target_lang}'.
+            Maintain the exact JSON structure. 
+            Ensure medical terms are translated accurately and professionally (not literally).
+            
+            JSON:
+            {json.dumps(data)}
+            """
+            gpt_call = client_ai.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3
+            )
+            translated_json = json.loads(gpt_call.choices[0].message.content)
+            return translated_json
+        except Exception as e:
+            print(f"OpenAI Translation Failed: {e}")
+            # Fall through to Google Translate
+
+    # 2. Google Translate Fallback (Literal)
+    translator = GoogleTranslator(source='en', target=target_lang)
     def t(val):
         if isinstance(val, str) and val:
             try: return translator.translate(val)
             except: return val
         if isinstance(val, list):
-            # Translate each item in the list individually for better accuracy
             return [translator.translate(v) for v in val]
         return val
 
     try:
         translated_data = {}
         for key, value in data.items():
-            # SKIP translation for technical codes
             if key in ['codes', 'id', 'risk']: 
                 translated_data[key] = value
             elif isinstance(value, dict):
-                # Recursive call for nested objects (like carePlan)
-                translated_data[key] = translate_response(value, target_lang)
+                translated_data[key] = smart_translate_response(value, target_lang)
             else:
-                # Translate strings and lists
                 translated_data[key] = t(value)
         return translated_data
-    except Exception as e:
-        print(f"Translation Error: {e}")
+    except:
         return data
 
 def get_icd_token():
-    # (ICD Token Logic remains same)
+    # (Same token logic)
     return None 
 
-# --- STANDARD ROUTES ---
+# --- STANDARD ROUTES (Login, Register, etc.) ---
 @app.route('/health', methods=['GET'])
 def health_check(): return jsonify({"status": "ok"}), 200
 
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.json
-    if User.query.filter_by(email=data['email']).first(): return jsonify({"message": "User already exists!", "success": False}), 400
+    if User.query.filter_by(email=data['email']).first(): return jsonify({"message": "User exists", "success": False}), 400
     new_user = User(name=data['name'], email=data['email'], password=data['password'], role=data.get('role', 'individual'), specialization=data.get('specialization'), hospitalName=data.get('hospitalName'), address=data.get('address'), timings=data.get('timings'))
     db.session.add(new_user)
     db.session.commit()
-    return jsonify({"message": "Registration Successful!", "success": True})
+    return jsonify({"message": "Success", "success": True})
 
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json
     user = User.query.filter_by(email=data['email']).first()
     if user and user.password == data['password']:
-        return jsonify({"message": "Login Successful!", "success": True, "user": {"name": user.name, "role": user.role, "email": user.email}})
-    return jsonify({"message": "Invalid Credentials", "success": False}), 401
+        return jsonify({"message": "Success", "success": True, "user": {"name": user.name, "role": user.role, "email": user.email}})
+    return jsonify({"message": "Invalid", "success": False}), 401
 
 @app.route('/api/doctors', methods=['GET'])
 def get_doctors():
     doctors = User.query.filter_by(role='doctor').all()
-    doc_list = [{"id": d.id, "name": d.name, "specialization": d.specialization or 'General Physician', "hospitalName": d.hospitalName or 'Clinic', "address": d.address or 'Bhopal', "timings": d.timings or '10:00 AM - 05:00 PM', "email": d.email} for d in doctors]
-    return jsonify(doc_list)
+    return jsonify([{"id": d.id, "name": d.name, "specialization": d.specialization, "hospitalName": d.hospitalName, "address": d.address, "timings": d.timings, "email": d.email} for d in doctors])
 
 @app.route('/api/book-appointment', methods=['POST'])
 def book_appointment():
     data = request.json
-    new_appt = Appointment(patientName=data['patientName'], doctorName=data['doctorName'], date=data['date'], time=data['time'], disease=data['disease'], phone=data['phone'], userEmail=data['userEmail'], status='Confirmed')
-    db.session.add(new_appt)
+    db.session.add(Appointment(patientName=data['patientName'], doctorName=data['doctorName'], date=data['date'], time=data['time'], disease=data['disease'], phone=data['phone'], userEmail=data['userEmail']))
     db.session.commit()
-    return jsonify({"message": "Appointment Booked Successfully!", "success": True})
+    return jsonify({"message": "Success", "success": True})
 
 @app.route('/api/update-appointment-status', methods=['POST'])
 def update_appointment_status():
@@ -158,8 +174,8 @@ def update_appointment_status():
     if appt:
         appt.status = data.get('status')
         db.session.commit()
-        return jsonify({"success": True, "message": "Status Updated"})
-    return jsonify({"success": False, "message": "Not Found"})
+        return jsonify({"success": True})
+    return jsonify({"success": False})
 
 @app.route('/api/update-doctor-profile', methods=['POST'])
 def update_doctor_profile():
@@ -171,8 +187,8 @@ def update_doctor_profile():
         user.address = data.get('address')
         user.timings = data.get('timings')
         db.session.commit()
-        return jsonify({"success": True, "message": "Profile Updated"})
-    return jsonify({"success": False, "message": "User not found"})
+        return jsonify({"success": True})
+    return jsonify({"success": False})
 
 @app.route('/api/dashboard-stats', methods=['POST'])
 def dashboard_stats():
@@ -212,11 +228,13 @@ def dashboard_stats():
 def search_disease():
     raw_query = request.json.get('query', '').strip()
     
-    # 1. Detect & Translate to English
+    # 1. Detect Language & Translate to English (if needed)
     user_lang, query = detect_and_translate_input(raw_query)
     query = query.lower()
+    
+    print(f"🔎 User Lang: {user_lang} | Searching for: {query}")
 
-    # [EXPANDED BACKUP DB - English Base]
+    # ROBUST ENGLISH BACKUP DB
     backup_db = {
         "asthma": { 
             "name": "Asthma", 
@@ -270,13 +288,13 @@ def search_disease():
 
     result_data = None
 
-    # 2. Find in Backup
+    # 2. Find in Backup (Using English Query)
     for key in backup_db:
         if key in query:
             result_data = backup_db[key]
             break
     
-    # 3. Fallback to OpenAI
+    # 3. Fallback to OpenAI if not in backup
     if not result_data and client_ai:
         try:
             prompt = f"Provide Ayurvedic medical summary for '{query}'. Return JSON: name, specialist, codes(icd11, namaste), description, carePlan(symptoms, diet, exercise, yoga)."
@@ -284,11 +302,12 @@ def search_disease():
             result_data = json.loads(gpt.choices[0].message.content)
         except: pass
 
-    # 4. Translate Response Back to User Language
+    # 4. TRANSLATE BACK (The Magic Step)
     if result_data:
+        # If user asked in Hindi, translate the ENGLISH result into HINDI
         if user_lang != 'en':
-            # This will now translate specific values (Description, Symptoms list, Diet list)
-            result_data = translate_response(result_data, user_lang)
+            result_data = smart_translate_response(result_data, user_lang)
+        
         return jsonify({"success": True, "data": result_data})
     
     return jsonify({"success": False, "message": "Disease not found."})
@@ -320,7 +339,7 @@ def analyze_symptoms():
 
     # 2. Translate Response Back
     if user_lang != 'en':
-        match = translate_response(match, user_lang)
+        match = smart_translate_response(match, user_lang)
 
     return jsonify({"success": True, "data": match})
 
