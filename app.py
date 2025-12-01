@@ -10,22 +10,31 @@ import random
 import os
 from dotenv import load_dotenv
 
-# Translation Libraries
+# NEW: Translation Libraries
 from deep_translator import GoogleTranslator
 from langdetect import detect, DetectorFactory
 
+# Ensure consistent language detection
 DetectorFactory.seed = 0
+
+# 1. Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
+# Allow CORS for Vercel frontend
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# DB Config
+# =====================================================
+# 🔐 CONFIGURATION & DATABASE CONNECTION
+# =====================================================
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db = SQLAlchemy(app)
 
-# API Keys
+# =====================================================
+# 🔑 API KEYS
+# =====================================================
 OPENAI_API_KEY_SECURE = os.getenv('OPENAI_API_KEY') 
 ICD_CLIENT_ID = 'c4f58ec7-9f5e-4d15-b638-71de5ff51103_9c73e6ca-0cfa-4c3e-a635-6c44c2f9ffed'
 ICD_CLIENT_SECRET = 'dyPIp9AacFq8D7YU6tAluIBEHIglwTajELzscG6/EYQ='
@@ -35,7 +44,10 @@ try:
 except:
     client_ai = None
 
-# --- DATABASE MODELS ---
+# =====================================================
+# 🗄️ DATABASE MODELS
+# =====================================================
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -60,10 +72,17 @@ class Appointment(db.Model):
     userEmail = db.Column(db.String(100)) 
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
-with app.app_context():
-    db.create_all()
+print("--- 2. CONNECTING TO DATABASE ---")
+try:
+    with app.app_context():
+        db.create_all()
+        print("✅ Connected to Cloud MySQL Database!")
+except Exception as e:
+    print(f"❌ CONNECTION FAILED: {e}")
 
-# --- TRANSLATION HELPERS ---
+# =====================================================
+# 🛠️ TRANSLATION HELPERS
+# =====================================================
 def detect_and_translate_input(text):
     try:
         lang = detect(text)
@@ -78,7 +97,6 @@ def translate_response(data, target_lang):
     if target_lang == 'en': return data
     
     translator = GoogleTranslator(source='en', target=target_lang)
-
     def t(val):
         if isinstance(val, str) and val:
             try: return translator.translate(val)
@@ -90,7 +108,6 @@ def translate_response(data, target_lang):
     try:
         translated_data = {}
         for key, value in data.items():
-            # Keep codes and IDs in English
             if key in ['codes', 'id', 'risk']: 
                 translated_data[key] = value
             elif isinstance(value, dict):
@@ -102,40 +119,71 @@ def translate_response(data, target_lang):
         return data
 
 def get_icd_token():
-    return None # (Omitted for speed, using backup DB primarily)
+    token_endpoint = 'https://icdaccessmanagement.who.int/connect/token'
+    payload = {'client_id': ICD_CLIENT_ID, 'client_secret': ICD_CLIENT_SECRET, 'scope': 'icdapi_access', 'grant_type': 'client_credentials'}
+    try:
+        response = requests.post(token_endpoint, data=payload).json()
+        return response.get('access_token')
+    except: return None
 
-# --- STANDARD ROUTES ---
+# =====================================================
+# 🚀 API ROUTES
+# =====================================================
+
 @app.route('/health', methods=['GET'])
-def health_check(): return jsonify({"status": "ok"}), 200
+def health_check():
+    return jsonify({"status": "ok", "message": "Backend is live"}), 200
 
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.json
-    if User.query.filter_by(email=data['email']).first(): return jsonify({"message": "User exists", "success": False}), 400
-    new_user = User(name=data['name'], email=data['email'], password=data['password'], role=data.get('role', 'individual'), specialization=data.get('specialization'), hospitalName=data.get('hospitalName'), address=data.get('address'), timings=data.get('timings'))
+    if User.query.filter_by(email=data['email']).first():
+        return jsonify({"message": "User already exists!", "success": False}), 400
+    
+    new_user = User(
+        name=data['name'], email=data['email'], password=data['password'],
+        role=data.get('role', 'individual'), specialization=data.get('specialization'),
+        hospitalName=data.get('hospitalName'), address=data.get('address'), timings=data.get('timings')
+    )
     db.session.add(new_user)
     db.session.commit()
-    return jsonify({"message": "Success", "success": True})
+    return jsonify({"message": "Registration Successful!", "success": True})
 
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json
     user = User.query.filter_by(email=data['email']).first()
     if user and user.password == data['password']:
-        return jsonify({"message": "Success", "success": True, "user": {"name": user.name, "role": user.role, "email": user.email}})
-    return jsonify({"message": "Invalid", "success": False}), 401
+        return jsonify({
+            "message": "Login Successful!", 
+            "success": True, 
+            "user": {"name": user.name, "role": user.role, "email": user.email}
+        })
+    return jsonify({"message": "Invalid Credentials", "success": False}), 401
 
 @app.route('/api/doctors', methods=['GET'])
 def get_doctors():
     doctors = User.query.filter_by(role='doctor').all()
-    return jsonify([{"id": d.id, "name": d.name, "specialization": d.specialization, "hospitalName": d.hospitalName, "address": d.address, "timings": d.timings, "email": d.email} for d in doctors])
+    doc_list = []
+    for doc in doctors:
+        doc_list.append({
+            "id": doc.id, "name": doc.name, "specialization": doc.specialization or 'General Physician',
+            "hospitalName": doc.hospitalName or 'Clinic', "address": doc.address or 'Bhopal',
+            "timings": doc.timings or '10:00 AM - 05:00 PM', "email": doc.email
+        })
+    return jsonify(doc_list)
 
 @app.route('/api/book-appointment', methods=['POST'])
 def book_appointment():
     data = request.json
-    db.session.add(Appointment(patientName=data['patientName'], doctorName=data['doctorName'], date=data['date'], time=data['time'], disease=data['disease'], phone=data['phone'], userEmail=data['userEmail']))
+    new_appt = Appointment(
+        patientName=data['patientName'], doctorName=data['doctorName'], date=data['date'],
+        time=data['time'], disease=data['disease'], phone=data['phone'],
+        userEmail=data['userEmail'], status='Confirmed'
+    )
+    db.session.add(new_appt)
     db.session.commit()
-    return jsonify({"message": "Success", "success": True})
+    return jsonify({"message": "Appointment Booked Successfully!", "success": True})
 
 @app.route('/api/update-appointment-status', methods=['POST'])
 def update_appointment_status():
@@ -144,8 +192,8 @@ def update_appointment_status():
     if appt:
         appt.status = data.get('status')
         db.session.commit()
-        return jsonify({"success": True})
-    return jsonify({"success": False})
+        return jsonify({"success": True, "message": "Status Updated"})
+    return jsonify({"success": False, "message": "Not Found"})
 
 @app.route('/api/update-doctor-profile', methods=['POST'])
 def update_doctor_profile():
@@ -157,16 +205,23 @@ def update_doctor_profile():
         user.address = data.get('address')
         user.timings = data.get('timings')
         db.session.commit()
-        return jsonify({"success": True})
-    return jsonify({"success": False})
+        return jsonify({"success": True, "message": "Profile Updated"})
+    return jsonify({"success": False, "message": "User not found"})
 
 @app.route('/api/dashboard-stats', methods=['POST'])
 def dashboard_stats():
     data = request.json
     user_role = data.get('role')
     user_email = data.get('email')
-    stats = {"active_doctors_count": 0, "active_doctors_list": [], "active_appointment": None, "past_appointments": [], "total_app_count": 0, "all_appointments": [], "doctor_active_appts": [], "patient_records": [], "efficacy_stats": {"success": 0, "missed": 0, "total": 0}, "system_health": {"status": "Operational", "uptime": "100%", "database": "Connected"}}
-    
+
+    stats = {
+        "active_doctors_count": 0, "active_doctors_list": [], "active_appointment": None,
+        "past_appointments": [], "total_app_count": 0, "all_appointments": [], 
+        "doctor_active_appts": [], "patient_records": [],
+        "efficacy_stats": {"success": 0, "missed": 0, "total": 0},
+        "system_health": {"status": "Operational", "uptime": "100%", "database": "Connected"}
+    }
+
     doctors = User.query.filter_by(role='doctor').all()
     doc_list = [{"id": d.id, "name": d.name, "specialization": d.specialization, "location": "Bhopal"} for d in doctors]
     stats["active_doctors_count"] = len(doc_list)
@@ -175,79 +230,69 @@ def dashboard_stats():
     if user_role == 'individual':
         my_appts = Appointment.query.filter_by(userEmail=user_email).order_by(Appointment.created_at.desc()).all()
         stats["total_app_count"] = len(my_appts)
-        for appt in my_appts: stats["past_appointments"].append({"doctorName": appt.doctorName, "date": appt.date, "time": appt.time, "disease": appt.disease, "status": appt.status})
+        
+        for appt in my_appts:
+            stats["past_appointments"].append({
+                "doctorName": appt.doctorName, "date": appt.date, "time": appt.time,
+                "disease": appt.disease, "status": appt.status
+            })
+        
         active = next((a for a in my_appts if a.status == 'Confirmed'), None)
-        if active: stats["active_appointment"] = {"doctor": active.doctorName, "time": active.time, "date": active.date, "disease": active.disease}
+        if active:
+            stats["active_appointment"] = {"doctor": active.doctorName, "time": active.time, "date": active.date, "disease": active.disease}
+
     elif user_role == 'doctor':
         current_user = User.query.filter_by(email=user_email).first()
         if current_user:
             doc_appts = Appointment.query.filter_by(doctorName=current_user.name).order_by(Appointment.created_at.desc()).all()
             for appt in doc_appts:
-                if appt.status == 'Confirmed': stats["doctor_active_appts"].append({"id": appt.id, "patient_name": appt.patientName, "disease": appt.disease, "time": appt.time, "date": appt.date, "phone": appt.phone})
-                stats["patient_records"].append({"patient": appt.patientName, "doctor": appt.doctorName, "date": appt.date, "feedback": random.choice(["Good", "Satisfied"])})
+                if appt.status == 'Confirmed':
+                    stats["doctor_active_appts"].append({
+                        "id": appt.id, "patient_name": appt.patientName, "disease": appt.disease,
+                        "time": appt.time, "date": appt.date, "phone": appt.phone
+                    })
+                stats["patient_records"].append({
+                    "patient": appt.patientName, "doctor": appt.doctorName, "date": appt.date, "feedback": random.choice(["Good", "Satisfied"])
+                })
             success = Appointment.query.filter_by(doctorName=current_user.name, status='Successful').count()
             missed = Appointment.query.filter_by(doctorName=current_user.name, status='Not Appeared').count()
             stats["efficacy_stats"] = {"success": success, "missed": missed, "total": success+missed}
     else:
         all_appts = Appointment.query.order_by(Appointment.created_at.desc()).all()
-        for appt in all_appts: stats["all_appointments"].append({"id": appt.id, "patient_name": appt.patientName, "doctor_name": appt.doctorName, "status": appt.status, "disease": appt.disease}); stats["patient_records"].append({"patient": appt.patientName, "doctor": appt.doctorName, "date": appt.date, "feedback": "Recorded"})
+        for appt in all_appts:
+            stats["all_appointments"].append({
+                "id": appt.id, "patient_name": appt.patientName, "doctor_name": appt.doctorName,
+                "status": appt.status, "disease": appt.disease
+            })
+            stats["patient_records"].append({
+                "patient": appt.patientName, "doctor": appt.doctorName, "date": appt.date, "feedback": "Recorded"
+            })
+
     return jsonify({"success": True, "stats": stats})
 
-# --- 8. INTELLIGENT DISEASE SEARCH ---
+# --- 8. MULTILINGUAL DISEASE SEARCH ---
 @app.route('/api/search-disease', methods=['POST'])
 def search_disease():
     raw_query = request.json.get('query', '').strip()
-    
-    # 1. Detect & Translate to English
     user_lang, query = detect_and_translate_input(raw_query)
     query = query.lower()
     
-    print(f"🔎 Detected: {user_lang}, Searching for: {query}")
-
-    # [EXPANDED BACKUP DB - Now includes Symptoms mapped to Diseases]
-    # This ensures if someone searches "Fever", they get the "Viral Fever" result.
+    # [EXPANDED BACKUP DB]
     backup_db = {
-        "asthma": { 
-            "name": "Asthma", "specialist": "Pulmonologist", "codes": {"icd11": "CA23", "namaste": "TM2-R-008"}, 
-            "description": "A chronic condition affecting the airways in the lungs, causing wheezing and tightness.", 
-            "carePlan": { "symptoms": ["Wheezing", "Shortness of breath"], "diet": ["Ginger tea", "Warm fluids"], "exercise": ["Walking"], "yoga": ["Pranayama"] } 
-        },
-        "diabetes": { 
-            "name": "Diabetes Mellitus", "specialist": "Endocrinologist", "codes": {"icd11": "5A11", "namaste": "TM2-E-034"}, 
-            "description": "A metabolic disease causing high blood sugar levels.", 
-            "carePlan": { "symptoms": ["Increased thirst", "Frequent urination"], "diet": ["Leafy greens", "Bitter gourd"], "exercise": ["Brisk walking"], "yoga": ["Mandukasana"] } 
-        },
-        "migraine": { 
-            "name": "Migraine", "specialist": "Neurologist", "codes": {"icd11": "8A80", "namaste": "TM2-N-012"}, 
-            "description": "Intense, debilitating headaches often with nausea.", 
-            "carePlan": { "symptoms": ["Throbbing pain", "Nausea"], "diet": ["Magnesium rich foods"], "exercise": ["Gentle stretching"], "yoga": ["Shishuasana"] } 
-        },
-        "fever": { # Mapped "Fever" directly to Viral Fever
-            "name": "Viral Fever", "specialist": "General Physician", "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, 
-            "description": "Acute viral infection characterized by high body temperature.", 
-            "carePlan": { "symptoms": ["High fever", "Chills", "Body ache"], "diet": ["Soup", "Herbal tea"], "exercise": ["Rest is recommended"], "yoga": ["Shavasana"] } 
-        },
-        "viral fever": { # Duplicate for direct match
-            "name": "Viral Fever", "specialist": "General Physician", "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, 
-            "description": "Acute viral infection characterized by high body temperature.", 
-            "carePlan": { "symptoms": ["High fever", "Chills", "Body ache"], "diet": ["Soup", "Herbal tea"], "exercise": ["Rest is recommended"], "yoga": ["Shavasana"] } 
-        },
-         "headache": { # Mapped "Headache" directly to Migraine/Tension
-            "name": "Chronic Headache / Migraine", "specialist": "Neurologist", "codes": {"icd11": "8A80", "namaste": "TM2-N-012"}, 
-            "description": "Pain in the head or face that is often throbbing and constant.", 
-            "carePlan": { "symptoms": ["Head pain", "Sensitivity to light"], "diet": ["Hydration", "Fruits"], "exercise": ["Neck stretching"], "yoga": ["Balasana"] } 
-        }
+        "asthma": { "name": "Asthma", "specialist": "Pulmonologist", "codes": {"icd11": "CA23", "namaste": "TM2-R-008"}, "description": "A chronic condition affecting the airways.", "carePlan": { "symptoms": ["Wheezing", "Shortness of breath"], "diet": ["Ginger tea", "Warm fluids"], "exercise": ["Walking"], "yoga": ["Pranayama"] } },
+        "diabetes": { "name": "Diabetes Mellitus", "specialist": "Endocrinologist", "codes": {"icd11": "5A11", "namaste": "TM2-E-034"}, "description": "High blood sugar levels over a prolonged period.", "carePlan": { "symptoms": ["Thirst", "Frequent urination"], "diet": ["Leafy greens", "Avoid sugar"], "exercise": ["Brisk walking"], "yoga": ["Mandukasana"] } },
+        "migraine": { "name": "Migraine", "specialist": "Neurologist", "codes": {"icd11": "8A80", "namaste": "TM2-N-012"}, "description": "Intense, debilitating headaches.", "carePlan": { "symptoms": ["Throbbing pain", "Nausea"], "diet": ["Magnesium rich foods"], "exercise": ["Gentle stretching"], "yoga": ["Shishuasana"] } },
+        "viral fever": { "name": "Viral Fever", "specialist": "General Physician", "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, "description": "A high body temperature caused by a viral infection.", "carePlan": { "symptoms": ["High fever", "Chills", "Body ache"], "diet": ["Drink hot soup", "Eat light meals"], "exercise": ["Rest completely"], "yoga": ["Shavasana"] } },
+        "fever": { "name": "Viral Fever", "specialist": "General Physician", "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, "description": "A high body temperature caused by a viral infection.", "carePlan": { "symptoms": ["High fever", "Chills", "Body ache"], "diet": ["Drink hot soup", "Eat light meals"], "exercise": ["Rest completely"], "yoga": ["Shavasana"] } },
+        "headache": { "name": "Migraine", "specialist": "Neurologist", "codes": {"icd11": "8A80", "namaste": "TM2-N-012"}, "description": "Severe throbbing headache.", "carePlan": { "symptoms": ["Pain", "Nausea"], "diet": ["Water"], "exercise": ["Rest"], "yoga": ["Meditation"] } }
     }
 
     result_data = None
-
-    # 2. Find in Backup (Exact or Partial Match)
     for key in backup_db:
         if key in query or query in key:
             result_data = backup_db[key]
             break
     
-    # 3. Fallback to OpenAI
     if not result_data and client_ai:
         try:
             prompt = f"Provide Ayurvedic medical summary for '{query}'. Return JSON: name, specialist, codes(icd11, namaste), description, carePlan(symptoms, diet, exercise, yoga)."
@@ -255,7 +300,6 @@ def search_disease():
             result_data = json.loads(gpt.choices[0].message.content)
         except: pass
 
-    # 4. Translate Response Back
     if result_data:
         if user_lang != 'en':
             result_data = translate_response(result_data, user_lang)
@@ -263,48 +307,42 @@ def search_disease():
     
     return jsonify({"success": False, "message": "Disease not found."})
 
-# --- 9. INTELLIGENT SYMPTOM ANALYZER ---
+# --- 9. MULTILINGUAL SYMPTOM ANALYZER (UPDATED LOGIC) ---
 @app.route('/api/analyze-symptoms', methods=['POST'])
 def analyze_symptoms():
     raw_symptoms = request.json.get('symptoms', '').strip()
-    
-    # 1. Detect & Translate to English
     user_lang, symptoms = detect_and_translate_input(raw_symptoms)
     symptoms = symptoms.lower()
     
-    # Expanded Keywords for better matching
-    smart_diagnosis = [
-        {"keywords": ["migraine", "headache", "head", "throbbing"], "disease": "Migraine", "risk": "Moderate", "specialty": "Neurologist", "advice": "Rest in a dark room, hydrate."},
-        {"keywords": ["cardiac", "chest", "heart", "pain", "attack"], "disease": "Cardiac Issue", "risk": "High", "specialty": "Cardiologist", "advice": "Seek immediate medical help."},
-        {"keywords": ["viral", "fever", "chills", "hot", "temp"], "disease": "Viral Fever", "risk": "Low", "specialty": "General Physician", "advice": "Rest, take paracetamol if needed."},
-        {"keywords": ["diabetes", "sugar", "thirst", "urination"], "disease": "Diabetes", "risk": "Moderate", "specialty": "Endocrinologist", "advice": "Check blood sugar levels."},
-        {"keywords": ["arthritis", "joint", "knee", "pain", "stiff"], "disease": "Arthritis", "risk": "Moderate", "specialty": "Orthopedist", "advice": "Use hot compress."},
-        {"keywords": ["dermatitis", "skin", "rash", "itch", "red"], "disease": "Dermatitis", "risk": "Low", "specialty": "Dermatologist", "advice": "Apply moisturizer."}
+    local_diagnosis_db = [
+        {"keywords": ["headache", "head", "throbbing", "migraine"], "disease": "Migraine", "risk": "Moderate", "specialty": "Neurologist", "advice": "Rest in a dark room, hydrate."},
+        {"keywords": ["chest", "heart", "pain"], "disease": "Cardiac Issue", "risk": "High", "specialty": "Cardiologist", "advice": "Seek immediate medical help."},
+        {"keywords": ["fever", "chills", "hot", "temperature"], "disease": "Viral Fever", "risk": "Low", "specialty": "General Physician", "advice": "Rest, take paracetamol if needed."},
+        {"keywords": ["sugar", "thirst", "urination"], "disease": "Diabetes", "risk": "Moderate", "specialty": "Endocrinologist", "advice": "Check blood sugar levels."},
+        {"keywords": ["joint", "knee", "pain"], "disease": "Arthritis", "risk": "Moderate", "specialty": "Orthopedist", "advice": "Use hot compress."},
+        {"keywords": ["skin", "rash", "itch"], "disease": "Dermatitis", "risk": "Low", "specialty": "Dermatologist", "advice": "Apply moisturizer."}
     ]
 
     match = None
-    openai_success = False
-
-    # 2. Try OpenAI First (Best for complex sentences)
-    try:
-        if client_ai:
+    
+    # FIX: Check Local DB FIRST! (This solves the "Fever" issue)
+    for item in local_diagnosis_db:
+        if any(word in symptoms for word in item['keywords']):
+            match = item
+            break
+            
+    # If no local match, TRY OpenAI
+    if not match and client_ai:
+        try:
             prompt = f"Analyze symptoms: \"{symptoms}\". Return valid JSON with: {{\"disease\": \"\", \"risk\": \"\", \"specialty\": \"\", \"advice\": \"\"}}"
             gpt = client_ai.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt}])
             match = json.loads(gpt.choices[0].message.content)
-            openai_success = True
-    except: pass
+        except: pass
 
-    # 3. Fallback to Local Logic
-    if not openai_success:
-        for item in smart_diagnosis:
-            if any(word in symptoms for word in item['keywords']):
-                match = item
-                break
-        
+    # Final Default
     if not match:
         match = {"disease": "General Health Issue", "risk": "Unknown", "specialty": "General Physician", "advice": "Consult a doctor."}
-
-    # 4. Translate Response Back
+    
     if user_lang != 'en':
         match = translate_response(match, user_lang)
 
