@@ -224,12 +224,90 @@ def search_disease():
     
     # [BACKUP DB]
     backup_db = {
-        "asthma": { "name": "Asthma", "specialist": "Pulmonologist", "codes": {"icd11": "CA23", "namaste": "TM2-R-008"}, "description": "A chronic condition affecting the airways in the lungs, causing wheezing and tightness.", "carePlan": { "symptoms": ["Wheezing", "Shortness of breath"], "diet": ["Ginger tea", "Warm fluids"], "exercise": ["Walking"], "yoga": ["Pranayama"] } },
-        "diabetes": { "name": "Diabetes Mellitus", "specialist": "Endocrinologist", "codes": {"icd11": "5A11", "namaste": "TM2-E-034"}, "description": "A metabolic disease causing high blood sugar levels.", "carePlan": { "symptoms": ["Increased thirst", "Frequent urination"], "diet": ["Leafy greens", "Bitter gourd"], "exercise": ["Brisk walking"], "yoga": ["Mandukasana"] } },
-        "migraine": { "name": "Migraine", "specialist": "Neurologist", "codes": {"icd11": "8A80", "namaste": "TM2-N-012"}, "description": "Intense, debilitating headaches often with nausea.", "carePlan": { "symptoms": ["Throbbing pain", "Nausea"], "diet": ["Magnesium rich foods"], "exercise": ["Gentle stretching"], "yoga": ["Shishuasana"] } },
-        "viral fever": { "name": "Viral Fever", "specialist": "General Physician", "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, "description": "Acute viral infection characterized by high body temperature and fatigue.", "carePlan": { "symptoms": ["High fever", "Chills", "Body ache"], "diet": ["Soup", "Herbal tea", "Light meals"], "exercise": ["Rest is recommended"], "yoga": ["Shavasana"] } },
-        "fever": { "name": "Viral Fever", "specialist": "General Physician", "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, "description": "Acute viral infection characterized by high body temperature and fatigue.", "carePlan": { "symptoms": ["High fever", "Chills", "Body ache"], "diet": ["Soup", "Herbal tea", "Light meals"], "exercise": ["Rest is recommended"], "yoga": ["Shavasana"] } }
+    "asthma": { 
+        "name": "Asthma", 
+        "specialist": "Pulmonologist", 
+        "codes": {"icd11": "CA23", "namaste": "TM2-R-008"}, 
+        "description": "A chronic condition affecting the airways in the lungs, causing wheezing and tightness.", 
+        "carePlan": { "symptoms": ["Wheezing", "Shortness of breath"], "diet": ["Ginger tea", "Warm fluids"], "exercise": ["Walking"], "yoga": ["Pranayama"] } 
+    },
+    "diabetes": { 
+        "name": "Diabetes Mellitus", 
+        "specialist": "Endocrinologist", 
+        "codes": {"icd11": "5A11", "namaste": "TM2-E-034"}, 
+        "description": "A metabolic disease causing high blood sugar levels.", 
+        "carePlan": { "symptoms": ["Increased thirst", "Frequent urination"], "diet": ["Leafy greens", "Bitter gourd"], "exercise": ["Brisk walking"], "yoga": ["Mandukasana"] } 
+    },
+    "migraine": { 
+        "name": "Migraine", 
+        "specialist": "Neurologist", 
+        "codes": {"icd11": "8A80", "namaste": "TM2-N-012"}, 
+        "description": "Intense, debilitating headaches often with nausea.", 
+        "carePlan": { "symptoms": ["Throbbing pain", "Nausea"], "diet": ["Magnesium rich foods"], "exercise": ["Gentle stretching"], "yoga": ["Shishuasana"] } 
+    },
+    "viral fever": { 
+        "name": "Viral Fever", 
+        "specialist": "General Physician", 
+        "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, 
+        "description": "Acute viral infection characterized by high body temperature and fatigue.", 
+        "carePlan": { "symptoms": ["High fever", "Chills", "Body ache"], "diet": ["Soup", "Herbal tea", "Light meals"], "exercise": ["Rest is recommended"], "yoga": ["Shavasana"] } 
+    },
+    "fever": { 
+        "name": "Viral Fever", 
+        "specialist": "General Physician", 
+        "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, 
+        "description": "Acute viral infection characterized by high body temperature and fatigue.", 
+        "carePlan": { "symptoms": ["High fever", "Chills", "Body ache"], "diet": ["Soup", "Herbal tea", "Light meals"], "exercise": ["Rest is recommended"], "yoga": ["Shavasana"] } 
+    },
+    "cancer": { 
+        "name": "Cancer (General Neoplasm)", 
+        "specialist": "Oncologist", 
+        "codes": {"icd11": "2A00", "namaste": "TM2-C-999"}, 
+        "description": "Uncontrolled growth of abnormal cells in the body.", 
+        "carePlan": { 
+            "symptoms": ["Unexplained weight loss", "Fatigue", "Lump or thickening"], 
+            "diet": ["Antioxidant-rich berries", "Cruciferous vegetables", "High protein"], 
+            "exercise": ["Light walking", "Conservation of energy"], 
+            "yoga": ["Sukhasana", "Gentle breathing"] 
+        } 
+    },
+    "hypertension": { 
+        "name": "Hypertension", 
+        "specialist": "Cardiologist", 
+        "codes": {"icd11": "BA00", "namaste": "TM2-H-045"}, 
+        "description": "High blood pressure that can lead to severe health complications.", 
+        "carePlan": { 
+            "symptoms": ["Headaches", "Shortness of breath", "Nosebleeds"], 
+            "diet": ["Low sodium", "Bananas", "Oats"], 
+            "exercise": ["Aerobic exercise", "Cycling"], 
+            "yoga": ["Savasana", "Anulom Vilom"] 
+        } 
+    },
+    "arthritis": { 
+        "name": "Arthritis", 
+        "specialist": "Rheumatologist", 
+        "codes": {"icd11": "FA00", "namaste": "TM2-A-019"}, 
+        "description": "Inflammation of one or more joints, causing pain and stiffness.", 
+        "carePlan": { 
+            "symptoms": ["Joint pain", "Stiffness", "Swelling"], 
+            "diet": ["Turmeric milk", "Fatty fish", "Walnuts"], 
+            "exercise": ["Swimming", "Low-impact aerobics"], 
+            "yoga": ["Tadasana", "Vrikshasana"] 
+        } 
+    },
+    "anxiety": { 
+        "name": "Anxiety Disorder", 
+        "specialist": "Psychiatrist", 
+        "codes": {"icd11": "6B00", "namaste": "TM2-M-022"}, 
+        "description": "A mental health disorder characterized by feelings of worry or fear.", 
+        "carePlan": { 
+            "symptoms": ["Restlessness", "Rapid heartbeat", "Difficulty concentrating"], 
+            "diet": ["Dark chocolate", "Chamomile tea", "Yogurt"], 
+            "exercise": ["Yoga", "Jogging"], 
+            "yoga": ["Balasana", "Bramari Pranayama"] 
+        } 
     }
+}
 
     result_data = None
 
@@ -263,12 +341,16 @@ def analyze_symptoms():
     symptoms = symptoms.lower()
     
     local_diagnosis_db = [
-        {"keywords": ["headache", "head", "throbbing"], "disease": "Migraine", "risk": "Moderate", "specialty": "Neurologist", "advice": "Rest in a dark room."},
-        {"keywords": ["chest", "heart", "pain"], "disease": "Cardiac Issue", "risk": "High", "specialty": "Cardiologist", "advice": "Seek help."},
-        {"keywords": ["fever", "hot", "temp", "cold"], "disease": "Viral Fever", "risk": "Low", "specialty": "General Physician", "advice": "Rest."},
-        {"keywords": ["sugar", "thirst"], "disease": "Diabetes", "risk": "Moderate", "specialty": "Endocrinologist", "advice": "Check sugar."},
-        {"keywords": ["joint", "knee", "pain"], "disease": "Arthritis", "risk": "Moderate", "specialty": "Orthopedist", "advice": "Use hot compress."},
-        {"keywords": ["skin", "rash", "itch"], "disease": "Dermatitis", "risk": "Low", "specialty": "Dermatologist", "advice": "Apply moisturizer."}
+        {"keywords": ["headache", "head", "throbbing", "migraine"], "disease": "Migraine", "risk": "Moderate", "specialty": "Neurologist", "advice": "Rest in a dark room and stay hydrated."},
+        {"keywords": ["chest", "heart", "pain", "tightness"], "disease": "Cardiac Issue", "risk": "High", "specialty": "Cardiologist", "advice": "Seek emergency medical help immediately."},
+        {"keywords": ["fever", "hot", "temp", "cold", "chills", "body ache"], "disease": "Viral Fever", "risk": "Low", "specialty": "General Physician", "advice": "Rest, drink plenty of fluids, and monitor temperature."},
+        {"keywords": ["sugar", "thirst", "urination", "glucose"], "disease": "Diabetes", "risk": "Moderate", "specialty": "Endocrinologist", "advice": "Monitor blood sugar levels and consult your specialist."},
+        {"keywords": ["joint", "knee", "swelling", "stiffness", "arthritis"], "disease": "Arthritis", "risk": "Moderate", "specialty": "Rheumatologist", "advice": "Apply a warm compress and avoid heavy strain on joints."},
+        {"keywords": ["skin", "rash", "itch", "redness"], "disease": "Dermatitis", "risk": "Low", "specialty": "Dermatologist", "advice": "Apply a mild moisturizer and avoid scratching."},
+        {"keywords": ["weight loss", "lump", "unexplained fatigue", "growth", "cancer"], "disease": "Cancer (General Neoplasm)", "risk": "High", "specialty": "Oncologist", "advice": "Consult an oncologist for a professional screening and biopsy if needed."},
+        {"keywords": ["blood pressure", "hypertension", "dizziness", "nosebleed"], "disease": "Hypertension", "risk": "Moderate", "specialty": "Cardiologist", "advice": "Reduce salt intake, rest, and monitor your BP readings."},
+        {"keywords": ["anxiety", "panic", "worry", "heartbeat", "nervous"], "disease": "Anxiety Disorder", "risk": "Low to Moderate", "specialty": "Psychiatrist", "advice": "Practice deep breathing (Pranayama) and consider professional counseling."},
+        {"keywords": ["wheezing", "breath", "cough", "asthma", "shortness"], "disease": "Asthma", "risk": "Moderate", "specialty": "Pulmonologist", "advice": "Keep your inhaler handy and avoid dust or smoke triggers."}
     ]
 
     match = None
