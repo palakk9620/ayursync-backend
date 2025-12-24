@@ -224,89 +224,13 @@ def search_disease():
     
     # [BACKUP DB]
     backup_db = {
-    "asthma": { 
-        "name": "Asthma", 
-        "specialist": "Pulmonologist", 
-        "codes": {"icd11": "CA23", "namaste": "TM2-R-008"}, 
-        "description": "A chronic condition affecting the airways in the lungs, causing wheezing and tightness.", 
-        "carePlan": { "symptoms": ["Wheezing", "Shortness of breath"], "diet": ["Ginger tea", "Warm fluids"], "exercise": ["Walking"], "yoga": ["Pranayama"] } 
-    },
-    "diabetes": { 
-        "name": "Diabetes Mellitus", 
-        "specialist": "Endocrinologist", 
-        "codes": {"icd11": "5A11", "namaste": "TM2-E-034"}, 
-        "description": "A metabolic disease causing high blood sugar levels.", 
-        "carePlan": { "symptoms": ["Increased thirst", "Frequent urination"], "diet": ["Leafy greens", "Bitter gourd"], "exercise": ["Brisk walking"], "yoga": ["Mandukasana"] } 
-    },
-    "migraine": { 
-        "name": "Migraine", 
-        "specialist": "Neurologist", 
-        "codes": {"icd11": "8A80", "namaste": "TM2-N-012"}, 
-        "description": "Intense, debilitating headaches often with nausea.", 
-        "carePlan": { "symptoms": ["Throbbing pain", "Nausea"], "diet": ["Magnesium rich foods"], "exercise": ["Gentle stretching"], "yoga": ["Shishuasana"] } 
-    },
-    "viral fever": { 
-        "name": "Viral Fever", 
-        "specialist": "General Physician", 
-        "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, 
-        "description": "Acute viral infection characterized by high body temperature and fatigue.", 
-        "carePlan": { "symptoms": ["High fever", "Chills", "Body ache"], "diet": ["Soup", "Herbal tea", "Light meals"], "exercise": ["Rest is recommended"], "yoga": ["Shavasana"] } 
-    },
-    "fever": { 
-        "name": "Viral Fever", 
-        "specialist": "General Physician", 
-        "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, 
-        "description": "Acute viral infection characterized by high body temperature and fatigue.", 
-        "carePlan": { "symptoms": ["High fever", "Chills", "Body ache"], "diet": ["Soup", "Herbal tea", "Light meals"], "exercise": ["Rest is recommended"], "yoga": ["Shavasana"] } 
-    },
-    "cancer": { 
-        "name": "Cancer (General Neoplasm)", 
-        "specialist": "Oncologist", 
-        "codes": {"icd11": "2A00", "namaste": "TM2-C-999"}, 
-        "description": "Uncontrolled growth of abnormal cells in the body.", 
-        "carePlan": { 
-            "symptoms": ["Unexplained weight loss", "Fatigue", "Lump or thickening"], 
-            "diet": ["Antioxidant-rich berries", "Cruciferous vegetables", "High protein"], 
-            "exercise": ["Light walking", "Conservation of energy"], 
-            "yoga": ["Sukhasana", "Gentle breathing"] 
-        } 
-    },
-    "hypertension": { 
-        "name": "Hypertension", 
-        "specialist": "Cardiologist", 
-        "codes": {"icd11": "BA00", "namaste": "TM2-H-045"}, 
-        "description": "High blood pressure that can lead to severe health complications.", 
-        "carePlan": { 
-            "symptoms": ["Headaches", "Shortness of breath", "Nosebleeds"], 
-            "diet": ["Low sodium", "Bananas", "Oats"], 
-            "exercise": ["Aerobic exercise", "Cycling"], 
-            "yoga": ["Savasana", "Anulom Vilom"] 
-        } 
-    },
-    "arthritis": { 
-        "name": "Arthritis", 
-        "specialist": "Rheumatologist", 
-        "codes": {"icd11": "FA00", "namaste": "TM2-A-019"}, 
-        "description": "Inflammation of one or more joints, causing pain and stiffness.", 
-        "carePlan": { 
-            "symptoms": ["Joint pain", "Stiffness", "Swelling"], 
-            "diet": ["Turmeric milk", "Fatty fish", "Walnuts"], 
-            "exercise": ["Swimming", "Low-impact aerobics"], 
-            "yoga": ["Tadasana", "Vrikshasana"] 
-        } 
-    },
-    "anxiety": { 
-        "name": "Anxiety Disorder", 
-        "specialist": "Psychiatrist", 
-        "codes": {"icd11": "6B00", "namaste": "TM2-M-022"}, 
-        "description": "A mental health disorder characterized by feelings of worry or fear.", 
-        "carePlan": { 
-            "symptoms": ["Restlessness", "Rapid heartbeat", "Difficulty concentrating"], 
-            "diet": ["Dark chocolate", "Chamomile tea", "Yogurt"], 
-            "exercise": ["Yoga", "Jogging"], 
-            "yoga": ["Balasana", "Bramari Pranayama"] 
-        } 
-    }
+    "asthma": { "name": "Asthma", "specialist": "Pulmonologist", "codes": {"icd11": "CA23", "namaste": "TM2-R-008"}, "description": "A chronic condition affecting the airways in the lungs, causing wheezing and tightness.", "carePlan": { "symptoms": ["Wheezing", "Shortness of breath"], "diet": ["Ginger tea", "Warm fluids"], "exercise": ["Walking"], "yoga": ["Pranayama"] } },
+    "diabetes": { "name": "Diabetes Mellitus", "specialist": "Endocrinologist", "codes": {"icd11": "5A11", "namaste": "TM2-E-034"}, "description": "A metabolic disease causing high blood sugar levels.", "carePlan": { "symptoms": ["Increased thirst", "Frequent urination"], "diet": ["Leafy greens", "Bitter gourd"], "exercise": ["Brisk walking"], "yoga": ["Mandukasana"] } },
+    "migraine": { "name": "Migraine", "specialist": "Neurologist", "codes": {"icd11": "8A80", "namaste": "TM2-N-012"}, "description": "Intense, debilitating headaches often with nausea.", "carePlan": { "symptoms": ["Throbbing pain", "Nausea"], "diet": ["Magnesium rich foods"], "exercise": ["Gentle stretching"], "yoga": ["Shishuasana"] } },
+    "viral fever": { "name": "Viral Fever", "specialist": "General Physician", "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, "description": "Acute viral infection characterized by high body temperature and fatigue.", "carePlan": { "symptoms": ["High fever", "Chills", "Body ache"], "diet": ["Soup", "Herbal tea", "Light meals"], "exercise": ["Rest is recommended"], "yoga": ["Shavasana"] } },
+    "fever": { "name": "Viral Fever", "specialist": "General Physician", "codes": {"icd11": "MG26", "namaste": "TM2-J-005"}, "description": "Acute viral infection characterized by high body temperature and fatigue.", "carePlan": { "symptoms": ["High fever", "Chills", "Body ache"], "diet": ["Soup", "Herbal tea", "Light meals"], "exercise": ["Rest is recommended"], "yoga": ["Shavasana"] } },
+    "cancer": { "name": "Cancer", "specialist": "Oncologist", "codes": {"icd11": "2A00", "namaste": "TM2-C-999"}, "description": "Uncontrolled growth of abnormal cells.", "carePlan": { "symptoms": ["Fatigue", "Lump"], "diet": ["High protein", "Berries"], "exercise": ["Light walking"], "yoga": ["Sukhasana"] } },
+    "hypertension": { "name": "Hypertension", "specialist": "Cardiologist", "codes": {"icd11": "BA00", "namaste": "TM2-H-045"}, "description": "High blood pressure condition.", "carePlan": { "symptoms": ["Dizziness", "Headache"], "diet": ["Low salt", "Bananas"], "exercise": ["Cycling"], "yoga": ["Savasana"] } }
 }
 
     result_data = None
